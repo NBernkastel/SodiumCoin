@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from blockchain import Blockchain
 from pydantic import BaseModel
 
-from config import nodes, own_node, secret_key
+from config import NODES, PUBLIC_KEY, SECRET_KEY
 
 app = FastAPI()
 
@@ -38,13 +38,13 @@ async def mine():
     proof = blockchain.proof_of_work(last_proof)
     blockchain.new_transaction(
         sender='0',
-        recipient=own_node,
+        recipient=PUBLIC_KEY,
         amount=1,
-        key=secret_key
+        key=SECRET_KEY
     )
     previous_hash = blockchain.hash(last_block)
     block = blockchain.new_block(proof, previous_hash)
-    for node in nodes:
+    for node in NODES:
         requests.post(node + '/block/get', json=block)
     with open('blockchain.blk', 'a') as file:
         file.write('\n')
@@ -54,8 +54,8 @@ async def mine():
 
 @app.post("/transactions/new")
 async def new_transaction(trn: Transaction):
-    transaction = blockchain.new_transaction(trn.sender, trn.recipient, trn.amount, secret_key)
-    for node in nodes:
+    transaction = blockchain.new_transaction(trn.sender, trn.recipient, trn.amount, SECRET_KEY)
+    for node in NODES:
         requests.post(node + '/transactions/get', json=transaction)
     return transaction
 
