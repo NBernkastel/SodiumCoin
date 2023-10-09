@@ -20,7 +20,6 @@ class Transaction(BaseModel):
 
 class TransactionGet(Transaction):
     signature: str
-    message: str
 
 
 class Block(BaseModel):
@@ -95,3 +94,13 @@ async def consensus():
         'message': 'Our chain is authoritative',
         'chain': blockchain.chain
     }
+
+
+@app.get('/chain/validate')
+async def chain_validate():
+    return blockchain.valid_chain(blockchain.chain)
+
+
+@app.get('/balance')
+async def chain_validate():
+    return blockchain.check_balance(PUBLIC_KEY)

@@ -16,9 +16,17 @@ def generate_ECDSA_keys():
     print(F"Your new address and private key are now in the file {filename}")
 
 
-def sign_ECDSA_msg(private_key):
-    message = str(round(time.time()))
-    bmessage = message.encode()
+def sign_ECDSA_msg(private_key, transaction_hash):
     sk = ecdsa.SigningKey.from_string(bytes.fromhex(private_key), curve=ecdsa.SECP256k1)
-    signature = base64.b64encode(sk.sign(bmessage))
-    return signature, message
+    signature = base64.b64encode(sk.sign(transaction_hash.encode()))
+    return signature
+
+
+def validate_signature(public_key, signature, transaction_hash):
+    public_key = (base64.b64decode(public_key)).hex()
+    signature = base64.b64decode(signature)
+    vk = ecdsa.VerifyingKey.from_string(bytes.fromhex(public_key), curve=ecdsa.SECP256k1)
+    try:
+        return vk.verify(signature, transaction_hash.encode())
+    except:
+        return False
