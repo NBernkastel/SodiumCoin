@@ -70,36 +70,41 @@ class Blockchain(object):
         guess_hash = hashlib.sha256(guess).hexdigest()
         return guess_hash[:4] == '0' * self.difficult
 
-    def valid_chain(self, chain: list) -> bool:
+    def validate_chain(self, chain: list) -> bool:
         last_block = chain[0]
         current_index = 1
         while current_index < len(chain):
             block = chain[current_index]
-            if block['previous_hash'] != self.hash(last_block):
+            if not self.validate_block(block,last_block):
                 return False
-            if not self.valid_proof(last_block['proof'], block['proof']):
-                return False
-            for transaction in block['transactions']:
-                if not self.validate_transaction(transaction):
-                    return False
-                if transaction['sender'] == '0':
-                    if transaction['recipient'] in self.wallets:
-                        self.wallets[transaction['recipient']] += 1
-                    else:
-                        self.wallets[transaction['recipient']] = 1
-                    continue
-                elif transaction['sender'] in self.wallets:
-                    if self.wallets[transaction['sender']] - transaction['amount'] < 0:
-                        return False
-                    else:
-                        self.wallets[transaction['sender']] -= transaction['amount']
-                        if transaction['recipient'] in self.wallets:
-                            self.wallets[transaction['recipient']] += transaction['amount']
-                        else:
-                            self.wallets[transaction['recipient']] = transaction['amount']
             last_block = block
             current_index += 1
         self.wallets = {}
+        return True
+
+    def validate_block(self, block, last_block):
+        if block['previous_hash'] != self.hash(last_block):
+            return False
+        if not self.valid_proof(last_block['proof'], block['proof']):
+            return False
+        for transaction in block['transactions']:
+            if not self.validate_transaction(transaction):
+                return False
+            if transaction['sender'] == '0':
+                if transaction['recipient'] in self.wallets:
+                    self.wallets[transaction['recipient']] += 1
+                else:
+                    self.wallets[transaction['recipient']] = 1
+                continue
+            elif transaction['sender'] in self.wallets:
+                if self.wallets[transaction['sender']] - transaction['amount'] < 0:
+                    return False
+                else:
+                    self.wallets[transaction['sender']] -= transaction['amount']
+                    if transaction['recipient'] in self.wallets:
+                        self.wallets[transaction['recipient']] += transaction['amount']
+                    else:
+                        self.wallets[transaction['recipient']] = transaction['amount']
         return True
 
     def validate_transaction(self, transaction):
@@ -136,7 +141,7 @@ class Blockchain(object):
 
             if response.status_code == 200:
                 chain = response.json()
-                if len(chain) > max_length and self.valid_chain(chain):
+                if len(chain) > max_length and self.validate_chain(chain):
                     max_length = len(chain)
                     new_chain = chain
         if new_chain:

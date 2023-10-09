@@ -1,7 +1,7 @@
 import json
 
 import requests
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from blockchain import Blockchain
 from pydantic import BaseModel
 
@@ -32,6 +32,7 @@ class Block(BaseModel):
 
 @app.get("/block/mine")
 async def mine():
+    blockchain.resolve_conflicts()
     last_block = blockchain.last_block
     last_proof = last_block['proof']
     proof = blockchain.proof_of_work(last_proof)
@@ -66,8 +67,10 @@ async def full_chain():
 
 @app.post("/transactions/get")
 async def get_transaction(trn: TransactionGet):
-    blockchain.current_transactions.append(trn)
-    return 200
+    if blockchain.validate_transaction(trn):
+        blockchain.current_transactions.append(trn)
+        return 200
+    return HTTPException(422)
 
 
 @app.get("/transactions/existings")
@@ -77,8 +80,11 @@ async def get_transaction():
 
 @app.post("/block/get")
 async def get_block(block: Block):
-    blockchain.chain.append(block)  # TODO make validation
-    return 200
+    blockchain.resolve_conflicts()
+    if blockchain.validate_block(block, blockchain.last_block):
+        blockchain.chain.append(block)
+        return 200
+    return HTTPException(422)
 
 
 @app.get('/nodes/resolve')
@@ -98,9 +104,9 @@ async def consensus():
 
 @app.get('/chain/validate')
 async def chain_validate():
-    return blockchain.valid_chain(blockchain.chain)
+    return blockchain.validate_chain(blockchain.chain)
 
 
 @app.get('/balance')
-async def chain_validate():
+async def balance():
     return blockchain.check_balance(PUBLIC_KEY)
