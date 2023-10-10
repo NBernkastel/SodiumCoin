@@ -67,8 +67,9 @@ async def full_chain():
 
 @app.post("/transactions/get")
 async def get_transaction(trn: TransactionGet):
-    if blockchain.validate_transaction(trn):
-        blockchain.current_transactions.append(trn)
+    transaction = dict(trn)
+    if blockchain.validate_transaction(transaction):
+        blockchain.current_transactions.append(transaction)
         return 200
     return HTTPException(422)
 
@@ -80,10 +81,12 @@ async def get_transaction():
 
 @app.post("/block/get")
 async def get_block(block: Block):
-    blockchain.resolve_conflicts()
-    if blockchain.validate_block(block, blockchain.last_block):
-        blockchain.chain.append(block)
+    if blockchain.validate_block(dict(block), blockchain.last_block):
+        blockchain.chain.append(dict(block))
         return 200
+    with open('blockchain.blk', 'a') as file:
+        file.write('\n')
+        json.dump(dict(block), file, sort_keys=True)
     return HTTPException(422)
 
 
