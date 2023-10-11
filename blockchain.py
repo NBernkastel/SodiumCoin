@@ -3,25 +3,54 @@ import json
 from time import time
 import requests
 
-from keygen import sign_ECDSA_msg, validate_signature
-from config import NODES
+from keygen import sign_ecdsa_msg, validate_signature
+from config import NODES, PUBLIC_KEY, SECRET_KEY
 
 
 class Blockchain(object):
-    def __init__(self, chain=None):
-        self.difficult = 4
+    obj = None
+
+    def __init__(self):
+        self.difficult = 5
         self.current_transactions = []
         self.wallets = {}
-        if chain:
+        try:
             with open('blockchain.blk', 'r') as file:
                 self.chain = []
                 for line in file:
                     self.chain.append(json.loads(line))
+        except FileNotFoundError:
+            if not self.consensus():
+                self.chain = []
+                self.new_block(previous_hash=1, proof=100)
+                with open('blockchain.blk', 'w') as file:
+                    json.dump(self.chain[0], file)
+
+    def __call__(cls, *args, **kwargs):
+        if not cls.obj:
+            super().__call__(*args, **kwargs)
         else:
-            self.chain = []
-            self.new_block(previous_hash=1, proof=100)
-            with open('blockchain.blk', 'w') as file:
-                json.dump(self.chain[0], file)
+            raise TypeError('Object already exist')
+
+    def mine(self):
+        self.consensus()
+        last_block = self.last_block
+        last_proof = last_block['proof']
+        proof = self.proof_of_work(last_proof)
+        self.new_transaction(
+            sender='0',
+            recipient=PUBLIC_KEY,
+            amount=1,
+            secret_key=SECRET_KEY
+        )
+        previous_hash = self.hash(last_block)
+        block = self.new_block(proof, previous_hash)
+        for node in NODES:
+            requests.post(node + '/block/get', json=block)
+        with open('blockchain.blk', 'a') as file:
+            file.write('\n')
+            json.dump(block, file, sort_keys=True)
+        return block
 
     def new_block(self, proof: int, previous_hash=None) -> dict:
         block = {
@@ -32,25 +61,22 @@ class Blockchain(object):
             'previous_hash': previous_hash or self.hash(self.chain[-1]),
         }
         self.current_transactions = []
-
         self.chain.append(block)
         return block
 
-    def new_transaction(self, sender: str, recipient: str, amount: int, key: str) -> dict:
+    def new_transaction(self, sender: str, recipient: str, amount: int, secret_key: str) -> dict:
         transaction = {
             'sender': sender,
             'recipient': recipient,
             'amount': amount,
         }
         transaction_hash = self.hash(transaction)
-        signature = sign_ECDSA_msg(key, transaction_hash)
-        transaction["signature"] = signature.decode()
+        transaction["signature"] = sign_ecdsa_msg(secret_key, transaction_hash)
         self.current_transactions.append(transaction)
-        print(transaction_hash)
         return transaction
 
     @staticmethod
-    def hash(block):
+    def hash(block: dict) -> str:
         block_string = json.dumps(block, sort_keys=True).encode()
         return hashlib.sha256(block_string).hexdigest()
 
@@ -68,21 +94,24 @@ class Blockchain(object):
     def valid_proof(self, last_proof: int, proof: int) -> bool:
         guess = f'{last_proof}{proof}'.encode()
         guess_hash = hashlib.sha256(guess).hexdigest()
-        return guess_hash[:4] == '0' * self.difficult
+        if guess_hash[:self.difficult] == '0' * self.difficult:
+            print(guess_hash)
+            return True
+        return False
 
     def validate_chain(self, chain: list) -> bool:
         last_block = chain[0]
         current_index = 1
         while current_index < len(chain):
             block = chain[current_index]
-            if not self.validate_block(block,last_block):
+            if not self.validate_block(block, last_block):
                 return False
             last_block = block
             current_index += 1
         self.wallets = {}
         return True
 
-    def validate_block(self, block, last_block):
+    def validate_block(self, block: dict, last_block: dict) -> bool:
         if block['previous_hash'] != self.hash(last_block):
             return False
         if not self.valid_proof(last_block['proof'], block['proof']):
@@ -107,7 +136,7 @@ class Blockchain(object):
                         self.wallets[transaction['recipient']] = transaction['amount']
         return True
 
-    def validate_transaction(self, transaction):
+    def validate_transaction(self, transaction: dict) -> bool:
         transaction_without_sign = dict(transaction)
         transaction_without_sign.pop('signature')
         if not transaction['sender'] == '0':
@@ -122,7 +151,7 @@ class Blockchain(object):
             return False
         return False
 
-    def check_balance(self, public_key):
+    def check_balance(self, public_key: str) -> float:
         balance = 0
         for block in self.chain:
             for transaction in block['transactions']:
@@ -132,7 +161,8 @@ class Blockchain(object):
                     balance -= transaction['amount']
         return balance
 
-    def resolve_conflicts(self) -> bool:
+    def consensus(self) -> bool:
+        """Return True if chain was replaced"""
         neighbours = NODES
         new_chain = None
         max_length = len(self.chain)
@@ -147,5 +177,4 @@ class Blockchain(object):
         if new_chain:
             self.chain = new_chain
             return True
-
         return False

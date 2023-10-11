@@ -7,7 +7,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY')
 PUBLIC_KEY = os.environ.get('PUBLIC_KEY')
 NODES = os.environ.get('NODES')
 NODES = NODES.split(',')
-
+DEBUG = True
 
 if __name__ == '__main__':
     print(SECRET_KEY, type(SECRET_KEY))

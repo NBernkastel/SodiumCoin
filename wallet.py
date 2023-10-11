@@ -1,4 +1,9 @@
-from keygen import generate_ECDSA_keys
+import os
+import sys
+
+from api import mine, blockchain
+from keygen import generate_ecdsa_keys
+
 
 def wallet():
     response = None
@@ -7,13 +12,14 @@ def wallet():
             1. Generate new wallet
             2. Send coins to another wallet 
             3. Check balance
-            4. Quit
+            4. Main blocks
+            5. Quit
             """)
         if response == '1':
             print("""=========================================\n
             IMPORTANT: save this credentials or you won't be able to recover your wallet\n
             =========================================\n""")
-            generate_ECDSA_keys()
+            generate_ecdsa_keys()
         elif response == '2':
             addr_from = input("From: introduce your wallet address (public key)\n")
             private_key = input("Introduce your private key\n")
@@ -26,18 +32,35 @@ def wallet():
             if response.lower() == 'y':
                 pass
             elif response.lower() == 'n':
-                pass
+                response = None
         elif response == '3':
             pass
+        elif response == '4':
+            while True:
+                blockchain.mine()
         else:
-            quit()
+            return
     print('')
 
 
 if __name__ == '__main__':
-    print("""       =========================================\n
-        SIMPLE COIN v1.0.0 - BLOCKCHAIN SYSTEM\n
-       =========================================\n\n
+    if sys.platform.startswith('win'):
+        os.system('cls')
+    elif sys.platform.startswith('linux'):
+        os.system('clear')
+    print("""===================================================================\n
+  ██████  ▒█████  ▓█████▄  ██▓ █    ██  ███▄ ▄███▓ ▄████▄   ▒█████   ██▓ ███▄    █ 
+▒██    ▒ ▒██▒  ██▒▒██▀ ██▌▓██▒ ██  ▓██▒▓██▒▀█▀ ██▒▒██▀ ▀█  ▒██▒  ██▒▓██▒ ██ ▀█   █ 
+░ ▓██▄   ▒██░  ██▒░██   █▌▒██▒▓██  ▒██░▓██    ▓██░▒▓█    ▄ ▒██░  ██▒▒██▒▓██  ▀█ ██▒
+  ▒   ██▒▒██   ██░░▓█▄   ▌░██░▓▓█  ░██░▒██    ▒██ ▒▓▓▄ ▄██▒▒██   ██░░██░▓██▒  ▐▌██▒
+▒██████▒▒░ ████▓▒░░▒████▓ ░██░▒▒█████▓ ▒██▒   ░██▒▒ ▓███▀ ░░ ████▓▒░░██░▒██░   ▓██░
+▒ ▒▓▒ ▒ ░░ ▒░▒░▒░  ▒▒▓  ▒ ░▓  ░▒▓▒ ▒ ▒ ░ ▒░   ░  ░░ ░▒ ▒  ░░ ▒░▒░▒░ ░▓  ░ ▒░   ▒ ▒ 
+░ ░▒  ░ ░  ░ ▒ ▒░  ░ ▒  ▒  ▒ ░░░▒░ ░ ░ ░  ░      ░  ░  ▒     ░ ▒ ▒░  ▒ ░░ ░░   ░ ▒░
+░  ░  ░  ░ ░ ░ ▒   ░ ░  ░  ▒ ░ ░░░ ░ ░ ░      ░   ░        ░ ░ ░ ▒   ▒ ░   ░   ░ ░ 
+      ░      ░ ░     ░     ░     ░            ░   ░ ░          ░ ░   ░           ░ 
+                   ░                              ░                                                                 
+\n
+===================================================================\n\n
         Make sure you are using the latest version or you may end in
         a parallel chain.\n\n\n""")
     wallet()
