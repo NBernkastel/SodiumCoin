@@ -1,0 +1,2 @@
+# SodiumCoin
+The blockchain system
