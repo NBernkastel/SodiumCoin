@@ -97,3 +97,8 @@ async def chain_validate():
 async def balance():
     blockchain.consensus()
     return blockchain.check_balance(PUBLIC_KEY)
+
+
+@app.get('/nodes/get')
+async def get_nodes():
+    return blockchain.get_nodes()

@@ -4,7 +4,7 @@ from time import time
 import requests
 
 from keygen import sign_ecdsa_msg, validate_signature
-from config import NODES, PUBLIC_KEY, SECRET_KEY
+from config import PUBLIC_KEY, SECRET_KEY, NODES
 
 
 class Blockchain(object):
@@ -14,6 +14,9 @@ class Blockchain(object):
         self.difficult = 5
         self.current_transactions = []
         self.wallets = {}
+        self.nodes = set()
+        for node in NODES:
+            self.nodes.add(node)
         try:
             with open('blockchain.blk', 'r') as file:
                 self.chain = []
@@ -26,11 +29,10 @@ class Blockchain(object):
                 with open('blockchain.blk', 'w') as file:
                     json.dump(self.chain[0], file)
 
-    def __call__(cls, *args, **kwargs):
+    def __new__(cls, *args, **kwargs):
         if not cls.obj:
-            super().__call__(*args, **kwargs)
-        else:
-            raise TypeError('Object already exist')
+            cls.obj = object.__new__(cls, *args, **kwargs)
+        return cls.obj
 
     def mine(self):
         self.consensus()
@@ -45,7 +47,7 @@ class Blockchain(object):
         )
         previous_hash = self.hash(last_block)
         block = self.new_block(proof, previous_hash)
-        for node in NODES:
+        for node in self.nodes:
             requests.post(node + '/block/get', json=block)
         with open('blockchain.blk', 'a') as file:
             file.write('\n')
@@ -163,7 +165,7 @@ class Blockchain(object):
 
     def consensus(self) -> bool:
         """Return True if chain was replaced"""
-        neighbours = NODES
+        neighbours = self.nodes
         new_chain = None
         max_length = len(self.chain)
         for node in neighbours:
@@ -178,3 +180,14 @@ class Blockchain(object):
             self.chain = new_chain
             return True
         return False
+
+    def update_nodes(self):
+        for node in self.nodes:
+            response = requests.get(node + '/nodes/get')
+            for new_node in response:
+                self.nodes.add(new_node)
+                # TODO add node validation by ping node
+        return self.nodes
+
+    def get_nodes(self):
+        return self.nodes
