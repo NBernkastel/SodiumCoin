@@ -2,7 +2,6 @@ import hashlib
 import json
 from time import time
 import requests
-
 from keygen import sign_ecdsa_msg, validate_signature
 from config import PUBLIC_KEY, SECRET_KEY, NODES
 
@@ -18,16 +17,18 @@ class Blockchain(object):
         for node in NODES:
             self.nodes.add(node)
         try:
-            with open('blockchain.blk', 'r') as file:
+            with open('../blockchain.blk', 'r') as file:
                 self.chain = []
                 for line in file:
                     self.chain.append(json.loads(line))
         except FileNotFoundError:
-            if not self.consensus():
-                self.chain = []
-                self.new_block(previous_hash=1, proof=100)
-                with open('blockchain.blk', 'w') as file:
-                    json.dump(self.chain[0], file)
+            exit(0)
+            # TODO rewrite this
+            # if not self.consensus():
+            #     self.chain = []
+            #     self.new_block(previous_hash=1, proof=100)
+            #     with open('blockchain.blk', 'w') as file:
+            #         json.dump(self.chain[0], file)
 
     def __new__(cls, *args, **kwargs):
         if not cls.obj:
@@ -49,7 +50,7 @@ class Blockchain(object):
         block = self.new_block(proof, previous_hash)
         for node in self.nodes:
             requests.post(node + '/block/get', json=block)
-        with open('blockchain.blk', 'a') as file:
+        with open('../blockchain.blk', 'a') as file:
             file.write('\n')
             json.dump(block, file, sort_keys=True)
         return block
@@ -66,7 +67,11 @@ class Blockchain(object):
         self.chain.append(block)
         return block
 
-    def new_transaction(self, sender: str, recipient: str, amount: int, secret_key: str) -> dict:
+    def new_transaction(
+            self, sender: str,
+            recipient: str,
+            amount: int,
+            secret_key: str) -> dict:
         transaction = {
             'sender': sender,
             'recipient': recipient,
@@ -142,7 +147,10 @@ class Blockchain(object):
         transaction_without_sign = dict(transaction)
         transaction_without_sign.pop('signature')
         if not transaction['sender'] == '0':
-            if validate_signature(transaction['sender'], transaction['signature'], self.hash(transaction_without_sign)):
+            if validate_signature(transaction['sender'],
+                                  transaction['signature'],
+                                  self.hash(transaction_without_sign)
+                                  ):
                 return True
         else:
             if validate_signature(transaction['recipient'], transaction['signature'],

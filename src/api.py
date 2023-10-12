@@ -37,7 +37,12 @@ async def mine():
 
 @app.post("/transactions/new")
 async def new_transaction(trn: Transaction):
-    transaction = blockchain.new_transaction(trn.sender, trn.recipient, trn.amount, SECRET_KEY)
+    transaction = (blockchain.new_transaction
+                   (trn.sender,
+                    trn.recipient,
+                    trn.amount,
+                    SECRET_KEY)
+                   )
     for node in NODES:
         requests.post(node + '/transactions/get', json=transaction)
     return transaction
@@ -57,8 +62,8 @@ async def get_transaction(trn: TransactionGet):
     return HTTPException(422)
 
 
-@app.get("/transactions/existings")
-async def get_transaction():
+@app.get("/transactions/existing")
+async def existing_transaction():
     return blockchain.current_transactions
 
 
@@ -67,7 +72,7 @@ async def get_block(block: Block):
     if blockchain.validate_block(dict(block), blockchain.last_block):
         blockchain.chain.append(dict(block))
         return 200
-    with open('blockchain.blk', 'a') as file:
+    with open('../blockchain.blk', 'a') as file:
         file.write('\n')
         json.dump(dict(block), file, sort_keys=True)
     return HTTPException(422)

@@ -1,12 +1,8 @@
-def inc(x):
-    return x + 1
+from src.blockchain import Blockchain
+
+blockchain = Blockchain()
 
 
-def smf():
-    return 45
-
-def test_inc():
-    assert inc(3) == 4
-
-def test_smf():
-    assert smf() == 45
+def test_proof():
+    blockchain.proof_of_work(100)
+    assert True
