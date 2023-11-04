@@ -37,6 +37,7 @@ async def mine():
 
 @app.post("/transactions/new")
 async def new_transaction(trn: Transaction):
+    blockchain.consensus()
     transaction = (blockchain.new_transaction
                    (trn.sender,
                     trn.recipient,
@@ -56,7 +57,7 @@ async def full_chain():
 @app.post("/transactions/get")
 async def get_transaction(trn: TransactionGet):
     transaction = dict(trn)
-    if blockchain.validate_transaction(transaction):
+    if blockchain.validate_transaction(transaction) and transaction not in blockchain.current_transactions:
         blockchain.current_transactions.append(transaction)
         return 200
     return HTTPException(422)
@@ -71,10 +72,10 @@ async def existing_transaction():
 async def get_block(block: Block):
     if blockchain.validate_block(dict(block), blockchain.last_block):
         blockchain.chain.append(dict(block))
-        return 200
-    with open('../blockchain.blk', 'a') as file:
-        file.write('\n')
-        json.dump(dict(block), file, sort_keys=True)
+        with open('../blockchain.blk', 'a') as file:
+            file.write('\n')
+            json.dump(dict(block), file, sort_keys=True)
+            return True
     return HTTPException(422)
 
 

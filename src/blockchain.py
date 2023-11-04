@@ -11,24 +11,23 @@ class Blockchain(object):
 
     def __init__(self):
         self.difficult = 5
-        self.current_transactions = []
+        self.current_transactions = set()
         self.wallets = {}
         self.nodes = set()
+        self.chain = []
         for node in NODES:
             self.nodes.add(node)
         try:
             with open('../blockchain.blk', 'r') as file:
-                self.chain = []
                 for line in file:
                     self.chain.append(json.loads(line))
         except FileNotFoundError:
-            exit(0)
+            # exit(0)
             # TODO rewrite this
-            # if not self.consensus():
-            #     self.chain = []
-            #     self.new_block(previous_hash=1, proof=100)
-            #     with open('blockchain.blk', 'w') as file:
-            #         json.dump(self.chain[0], file)
+            if not self.consensus():
+                self.new_block(previous_hash=1, proof=100)
+                with open('../blockchain.blk', 'w') as file:
+                    json.dump(self.chain[0], file)
 
     def __new__(cls, *args, **kwargs):
         if not cls.obj:
@@ -37,6 +36,10 @@ class Blockchain(object):
 
     def mine(self):
         self.consensus()
+        for node in NODES:
+            response = requests.get(node + '/transactions/existing')
+            if response.status_code == 200:
+                self.current_transactions.update(response.json())
         last_block = self.last_block
         last_proof = last_block['proof']
         proof = self.proof_of_work(last_proof)
@@ -144,7 +147,7 @@ class Blockchain(object):
         return True
 
     def validate_transaction(self, transaction: dict) -> bool:
-        transaction_without_sign = dict(transaction)
+        transaction_without_sign = transaction
         transaction_without_sign.pop('signature')
         if not transaction['sender'] == '0':
             if validate_signature(transaction['sender'],
@@ -157,7 +160,7 @@ class Blockchain(object):
                                   self.hash(transaction_without_sign)):
                 if transaction['amount'] == 1:
                     return True
-        if transaction['amount < 0.000001']:
+        if transaction['amount < 0.00000001']:
             return False
         return False
 
@@ -181,7 +184,7 @@ class Blockchain(object):
 
             if response.status_code == 200:
                 chain = response.json()
-                if len(chain) > max_length and self.validate_chain(chain):
+                if (len(chain) > max_length and self.validate_chain(chain)) or (not self.validate_chain(self.chain) and self.validate_chain(chain)):
                     max_length = len(chain)
                     new_chain = chain
         if new_chain:
