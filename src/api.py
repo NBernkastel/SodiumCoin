@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from blockchain import Blockchain
 from config import NODES, PUBLIC_KEY, SECRET_KEY
+from validator import Validator
 
 app = FastAPI()
 
@@ -15,11 +16,14 @@ blockchain = Blockchain()
 class Transaction(BaseModel):
     sender: str
     recipient: str
-    amount: int
+    amount: float
+    fee: float
 
 
 class TransactionGet(Transaction):
-    signature: str
+    timestamp: float
+    hash: str
+    sign: str
 
 
 class Block(BaseModel):
@@ -28,6 +32,8 @@ class Block(BaseModel):
     transactions: list
     proof: int
     previous_hash: str
+    difficult: int
+    reward: float
 
 
 @app.get("/block/mine")
@@ -42,6 +48,7 @@ async def new_transaction(trn: Transaction):
                    (trn.sender,
                     trn.recipient,
                     trn.amount,
+                    trn.fee,
                     SECRET_KEY)
                    )
     for node in NODES:
@@ -56,10 +63,12 @@ async def full_chain():
 
 @app.post("/transactions/get")
 async def get_transaction(trn: TransactionGet):
-    transaction = dict(trn)
-    if blockchain.validate_transaction(transaction) and transaction not in blockchain.current_transactions:
-        blockchain.current_transactions.append(transaction)
-        return 200
+    if Validator.validate_transaction(blockchain.wallets, dict(trn), blockchain.reward, blockchain.emission_address,
+                                      blockchain.one_unit):
+        if trn.hash not in blockchain.current_transactions_hashs:
+            blockchain.current_transactions.append(dict(trn))
+            blockchain.current_transactions_hashs.add(trn.hash)
+            return 200
     return HTTPException(422)
 
 
@@ -70,7 +79,8 @@ async def existing_transaction():
 
 @app.post("/block/get")
 async def get_block(block: Block):
-    if blockchain.validate_block(dict(block), blockchain.last_block):
+    if Validator.validate_block(dict(block), blockchain.last_block, blockchain.wallets, blockchain.reward,
+                                blockchain.emission_address, blockchain.one_unit, blockchain.difficult):
         blockchain.chain.append(dict(block))
         with open('../blockchain.blk', 'a') as file:
             file.write('\n')
@@ -96,15 +106,11 @@ async def consensus():
 
 @app.get('/chain/validate')
 async def chain_validate():
-    return blockchain.validate_chain(blockchain.chain)
+    return Validator.validate_chain(blockchain.chain, blockchain.reward, blockchain.emission_address,
+                                    blockchain.one_unit, blockchain.difficult, blockchain.wallets)
 
 
 @app.get('/balance')
 async def balance():
     blockchain.consensus()
     return blockchain.check_balance(PUBLIC_KEY)
-
-
-@app.get('/nodes/get')
-async def get_nodes():
-    return blockchain.get_nodes()

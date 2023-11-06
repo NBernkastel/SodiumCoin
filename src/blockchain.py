@@ -1,9 +1,11 @@
-import hashlib
 import json
 from time import time
 import requests
-from keygen import sign_ecdsa_msg, validate_signature
+
+from blockchain_utils import elem_hash
+from keygen import sign_ecdsa_msg
 from config import PUBLIC_KEY, SECRET_KEY, NODES
+from validator import Validator
 
 
 class Blockchain(object):
@@ -11,12 +13,20 @@ class Blockchain(object):
 
     def __init__(self):
         self.difficult = 5
-        self.current_transactions = set()
-        self.wallets = {}
+        self.reward = 1
+        self.one_unit = 0.00000001
+        self.emission_address = '0'
+        self.current_transactions = []
+        self.current_transactions_hashs = set()
         self.nodes = set()
         self.chain = []
         for node in NODES:
             self.nodes.add(node)
+        try:
+            with open('../BlockhainState.dat', 'r') as block_state_file:
+                self.wallets = json.load(block_state_file)
+        except FileNotFoundError:
+            self.wallets = {}
         try:
             with open('../blockchain.blk', 'r') as file:
                 for line in file:
@@ -39,7 +49,7 @@ class Blockchain(object):
         for node in NODES:
             response = requests.get(node + '/transactions/existing')
             if response.status_code == 200:
-                self.current_transactions.update(response.json())
+                self.current_transactions.extend(response.json())
         last_block = self.last_block
         last_proof = last_block['proof']
         proof = self.proof_of_work(last_proof)
@@ -47,9 +57,10 @@ class Blockchain(object):
             sender='0',
             recipient=PUBLIC_KEY,
             amount=1,
+            fee=0,
             secret_key=SECRET_KEY
         )
-        previous_hash = self.hash(last_block)
+        previous_hash = elem_hash(last_block)
         block = self.new_block(proof, previous_hash)
         for node in self.nodes:
             requests.post(node + '/block/get', json=block)
@@ -64,9 +75,12 @@ class Blockchain(object):
             'timestamp': time(),
             'transactions': self.current_transactions,
             'proof': proof,
-            'previous_hash': previous_hash or self.hash(self.chain[-1]),
+            'previous_hash': previous_hash or elem_hash(self.chain[-1]),
+            'difficult': self.difficult,
+            'reward': self.reward
         }
         self.current_transactions = []
+        self.current_transactions_hashs = set()
         self.chain.append(block)
         return block
 
@@ -74,95 +88,31 @@ class Blockchain(object):
             self, sender: str,
             recipient: str,
             amount: int,
+            fee: float,
             secret_key: str) -> dict:
         transaction = {
             'sender': sender,
             'recipient': recipient,
             'amount': amount,
+            'timestamp': time(),
+            'fee': fee
         }
-        transaction_hash = self.hash(transaction)
-        transaction["signature"] = sign_ecdsa_msg(secret_key, transaction_hash)
+        transaction['hash'] = elem_hash(transaction)
+        transaction["sign"] = sign_ecdsa_msg(secret_key, transaction['hash'])
         self.current_transactions.append(transaction)
         return transaction
-
-    @staticmethod
-    def hash(block: dict) -> str:
-        block_string = json.dumps(block, sort_keys=True).encode()
-        return hashlib.sha256(block_string).hexdigest()
 
     @property
     def last_block(self):
         return self.chain[-1]
 
+
     def proof_of_work(self, last_proof: int) -> int:
         proof = 0
-        while self.valid_proof(last_proof, proof) is False:
+        while Validator.validate_proof(last_proof, proof, self.difficult) is False:
             proof += 1
 
         return proof
-
-    def valid_proof(self, last_proof: int, proof: int) -> bool:
-        guess = f'{last_proof}{proof}'.encode()
-        guess_hash = hashlib.sha256(guess).hexdigest()
-        if guess_hash[:self.difficult] == '0' * self.difficult:
-            print(guess_hash)
-            return True
-        return False
-
-    def validate_chain(self, chain: list) -> bool:
-        last_block = chain[0]
-        current_index = 1
-        while current_index < len(chain):
-            block = chain[current_index]
-            if not self.validate_block(block, last_block):
-                return False
-            last_block = block
-            current_index += 1
-        self.wallets = {}
-        return True
-
-    def validate_block(self, block: dict, last_block: dict) -> bool:
-        if block['previous_hash'] != self.hash(last_block):
-            return False
-        if not self.valid_proof(last_block['proof'], block['proof']):
-            return False
-        for transaction in block['transactions']:
-            if not self.validate_transaction(transaction):
-                return False
-            if transaction['sender'] == '0':
-                if transaction['recipient'] in self.wallets:
-                    self.wallets[transaction['recipient']] += 1
-                else:
-                    self.wallets[transaction['recipient']] = 1
-                continue
-            elif transaction['sender'] in self.wallets:
-                if self.wallets[transaction['sender']] - transaction['amount'] < 0:
-                    return False
-                else:
-                    self.wallets[transaction['sender']] -= transaction['amount']
-                    if transaction['recipient'] in self.wallets:
-                        self.wallets[transaction['recipient']] += transaction['amount']
-                    else:
-                        self.wallets[transaction['recipient']] = transaction['amount']
-        return True
-
-    def validate_transaction(self, transaction: dict) -> bool:
-        transaction_without_sign = transaction
-        transaction_without_sign.pop('signature')
-        if not transaction['sender'] == '0':
-            if validate_signature(transaction['sender'],
-                                  transaction['signature'],
-                                  self.hash(transaction_without_sign)
-                                  ):
-                return True
-        else:
-            if validate_signature(transaction['recipient'], transaction['signature'],
-                                  self.hash(transaction_without_sign)):
-                if transaction['amount'] == 1:
-                    return True
-        if transaction['amount < 0.00000001']:
-            return False
-        return False
 
     def check_balance(self, public_key: str) -> float:
         balance = 0
@@ -184,21 +134,19 @@ class Blockchain(object):
 
             if response.status_code == 200:
                 chain = response.json()
-                if (len(chain) > max_length and self.validate_chain(chain)) or (not self.validate_chain(self.chain) and self.validate_chain(chain)):
+                if (len(chain) > max_length and Validator.validate_chain(chain, self.reward, self.emission_address,
+                                                                         self.one_unit, self.difficult,
+                                                                         self.wallets)) or (
+                        not Validator.validate_chain(self.chain, self.reward, self.emission_address,
+                                                     self.one_unit, self.difficult,
+                                                     self.wallets) and Validator.validate_chain(chain, self.reward,
+                                                                                                self.emission_address,
+                                                                                                self.one_unit,
+                                                                                                self.difficult,
+                                                                                                self.wallets)):
                     max_length = len(chain)
                     new_chain = chain
         if new_chain:
             self.chain = new_chain
             return True
         return False
-
-    def update_nodes(self):
-        for node in self.nodes:
-            response = requests.get(node + '/nodes/get')
-            for new_node in response:
-                self.nodes.add(new_node)
-                # TODO add node validation by ping node
-        return self.nodes
-
-    def get_nodes(self):
-        return self.nodes
