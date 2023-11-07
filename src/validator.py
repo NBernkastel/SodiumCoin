@@ -12,7 +12,7 @@ class Validator:
         transaction_without_sign = dict(transaction)
         transaction_without_sign.pop('sign')
         if transaction['sender'] == emission_address:
-            if transaction['amount'] != reward:
+            if transaction['amount'] > reward:
                 return False
             if not validate_signature(public_key=transaction['recipient'],
                                       signature=transaction['sign'],
@@ -34,7 +34,7 @@ class Validator:
                                       message=transaction['hash']
                                       ):
                 return False
-            transaction['sender'] -= transaction['amount'] + transaction['fee']
+            wallets[transaction['sender']] -= transaction['amount'] + transaction['fee']
             if transaction['recipient'] not in wallets:
                 wallets[transaction['recipient']] = transaction['amount']
             else:
@@ -56,7 +56,7 @@ class Validator:
             if not Validator.validate_transaction(wallets, transaction, reward, emission_address, one_unit):
                 return False
             transactions_hashs.append(transaction['hash'])
-            return True
+        return True
 
     @staticmethod
     def validate_block(block: dict, previous_block, wallets: dict, reward: float, emission_address: str,
@@ -88,6 +88,7 @@ class Validator:
     @staticmethod
     def validate_chain(chain: list[dict], reward: float, emission_address: str, one_unit: float,
                        difficult: int, wallets: dict) -> bool:
+        wallets.clear()
         last_block = chain[0]
         current_index = 1
         while current_index < len(chain):

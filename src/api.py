@@ -82,7 +82,7 @@ async def get_block(block: Block):
     if Validator.validate_block(dict(block), blockchain.last_block, blockchain.wallets, blockchain.reward,
                                 blockchain.emission_address, blockchain.one_unit, blockchain.difficult):
         blockchain.chain.append(dict(block))
-        with open('../blockchain.blk', 'a') as file:
+        with open('../blockchain', 'a') as file:
             file.write('\n')
             json.dump(dict(block), file, sort_keys=True)
             return True

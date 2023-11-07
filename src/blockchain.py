@@ -23,12 +23,12 @@ class Blockchain(object):
         for node in NODES:
             self.nodes.add(node)
         try:
-            with open('../BlockhainState.dat', 'r') as block_state_file:
+            with open('../blockhainstate', 'r') as block_state_file:
                 self.wallets = json.load(block_state_file)
         except FileNotFoundError:
             self.wallets = {}
         try:
-            with open('../blockchain.blk', 'r') as file:
+            with open('../blockchain', 'r') as file:
                 for line in file:
                     self.chain.append(json.loads(line))
         except FileNotFoundError:
@@ -36,8 +36,9 @@ class Blockchain(object):
             # TODO rewrite this
             if not self.consensus():
                 self.new_block(previous_hash=1, proof=100)
-                with open('../blockchain.blk', 'w') as file:
+                with open('../blockchain', 'w') as file:
                     json.dump(self.chain[0], file)
+
 
     def __new__(cls, *args, **kwargs):
         if not cls.obj:
@@ -49,7 +50,13 @@ class Blockchain(object):
         for node in NODES:
             response = requests.get(node + '/transactions/existing')
             if response.status_code == 200:
-                self.current_transactions.extend(response.json())
+                transactions = response.json()
+                for transaction in transactions:
+                    if transaction['hash'] not in self.current_transactions_hashs:
+                        if Validator.validate_transaction(self.wallets, transaction, self.reward, self.emission_address,
+                                                          self.one_unit):
+                            self.current_transactions.append(transaction)
+                            self.current_transactions_hashs.add(transaction['hash'])
         last_block = self.last_block
         last_proof = last_block['proof']
         proof = self.proof_of_work(last_proof)
@@ -64,7 +71,7 @@ class Blockchain(object):
         block = self.new_block(proof, previous_hash)
         for node in self.nodes:
             requests.post(node + '/block/get', json=block)
-        with open('../blockchain.blk', 'a') as file:
+        with open('../blockchain', 'a') as file:
             file.write('\n')
             json.dump(block, file, sort_keys=True)
         return block
@@ -99,13 +106,16 @@ class Blockchain(object):
         }
         transaction['hash'] = elem_hash(transaction)
         transaction["sign"] = sign_ecdsa_msg(secret_key, transaction['hash'])
-        self.current_transactions.append(transaction)
+        if Validator.validate_transaction(self.wallets, transaction, self.reward,
+                                          self.emission_address,
+                                          self.one_unit):
+            self.current_transactions.append(transaction)
+            self.current_transactions_hashs.add(transaction['hash'])
         return transaction
 
     @property
     def last_block(self):
         return self.chain[-1]
-
 
     def proof_of_work(self, last_proof: int) -> int:
         proof = 0
@@ -115,14 +125,10 @@ class Blockchain(object):
         return proof
 
     def check_balance(self, public_key: str) -> float:
-        balance = 0
-        for block in self.chain:
-            for transaction in block['transactions']:
-                if transaction['recipient'] == public_key:
-                    balance += transaction['amount']
-                if transaction['sender'] == public_key:
-                    balance -= transaction['amount']
-        return balance
+        try:
+            return self.wallets[public_key]
+        except KeyError:
+            return 0
 
     def consensus(self) -> bool:
         """Return True if chain was replaced"""
@@ -148,5 +154,9 @@ class Blockchain(object):
                     new_chain = chain
         if new_chain:
             self.chain = new_chain
+            with open('../blockchain', 'w') as file:
+                for block in self.chain:
+                    json.dump(block, file, sort_keys=True)
+                    file.write('\n')
             return True
         return False
