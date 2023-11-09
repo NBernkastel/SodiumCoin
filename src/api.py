@@ -6,7 +6,6 @@ from pydantic import BaseModel
 
 from blockchain import Blockchain
 from config import NODES, PUBLIC_KEY, SECRET_KEY
-from validator import Validator
 
 app = FastAPI()
 
@@ -63,11 +62,10 @@ async def full_chain():
 
 @app.post("/transactions/get")
 async def get_transaction(trn: TransactionGet):
-    if Validator.validate_transaction(blockchain.wallets, dict(trn), blockchain.reward, blockchain.emission_address,
-                                      blockchain.one_unit):
-        if trn.hash not in blockchain.current_transactions_hashs:
+    if blockchain.validate_transaction(dict(trn)):
+        if trn.hash not in blockchain.current_transactions_hashes:
             blockchain.current_transactions.append(dict(trn))
-            blockchain.current_transactions_hashs.add(trn.hash)
+            blockchain.current_transactions_hashes.add(trn.hash)
             return 200
     return HTTPException(422)
 
@@ -79,8 +77,7 @@ async def existing_transaction():
 
 @app.post("/block/get")
 async def get_block(block: Block):
-    if Validator.validate_block(dict(block), blockchain.last_block, blockchain.wallets, blockchain.reward,
-                                blockchain.emission_address, blockchain.one_unit, blockchain.difficult):
+    if blockchain.validate_block(dict(block), blockchain.last_block):
         blockchain.chain.append(dict(block))
         with open('../blockchain', 'a') as file:
             file.write('\n')
@@ -106,8 +103,7 @@ async def consensus():
 
 @app.get('/chain/validate')
 async def chain_validate():
-    return Validator.validate_chain(blockchain.chain, blockchain.reward, blockchain.emission_address,
-                                    blockchain.one_unit, blockchain.difficult, blockchain.wallets)
+    return blockchain.validate_chain(blockchain.chain)
 
 
 @app.get('/balance')

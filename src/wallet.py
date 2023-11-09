@@ -3,14 +3,12 @@ from config import NODES
 from api import blockchain
 from keygen import generate_ecdsa_keys
 from utils import console_clear, get_logo
-from validator import Validator
 
 
 def wallet():
     response = None
     blockchain.consensus()
-    if not Validator.validate_chain(blockchain.chain, blockchain.reward, blockchain.emission_address,
-                                    blockchain.one_unit, blockchain.difficult, blockchain.wallets):
+    if not blockchain.validate_chain(blockchain.chain):
         raise Exception('No valid chain')
     while response not in ['1', '2', '3']:
         response = input("""What do you want to do?

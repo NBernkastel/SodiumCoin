@@ -1,23 +1,20 @@
+import hashlib
 import json
 from time import time
 import requests
-
 from blockchain_utils import elem_hash
-from keygen import sign_ecdsa_msg
+from keygen import sign_ecdsa_msg, validate_signature
 from config import PUBLIC_KEY, SECRET_KEY, NODES
-from validator import Validator
 
 
 class Blockchain(object):
-    obj = None
-
     def __init__(self):
         self.difficult = 5
         self.reward = 1
         self.one_unit = 0.00000001
         self.emission_address = '0'
         self.current_transactions = []
-        self.current_transactions_hashs = set()
+        self.current_transactions_hashes = set()
         self.nodes = set()
         self.chain = []
         for node in NODES:
@@ -39,12 +36,6 @@ class Blockchain(object):
                 with open('../blockchain', 'w') as file:
                     json.dump(self.chain[0], file)
 
-
-    def __new__(cls, *args, **kwargs):
-        if not cls.obj:
-            cls.obj = object.__new__(cls, *args, **kwargs)
-        return cls.obj
-
     def mine(self):
         self.consensus()
         for node in NODES:
@@ -52,11 +43,10 @@ class Blockchain(object):
             if response.status_code == 200:
                 transactions = response.json()
                 for transaction in transactions:
-                    if transaction['hash'] not in self.current_transactions_hashs:
-                        if Validator.validate_transaction(self.wallets, transaction, self.reward, self.emission_address,
-                                                          self.one_unit):
+                    if transaction['hash'] not in self.current_transactions_hashes:
+                        if self.validate_transaction(transaction):
                             self.current_transactions.append(transaction)
-                            self.current_transactions_hashs.add(transaction['hash'])
+                            self.current_transactions_hashes.add(transaction['hash'])
         last_block = self.last_block
         last_proof = last_block['proof']
         proof = self.proof_of_work(last_proof)
@@ -87,7 +77,7 @@ class Blockchain(object):
             'reward': self.reward
         }
         self.current_transactions = []
-        self.current_transactions_hashs = set()
+        self.current_transactions_hashes = set()
         self.chain.append(block)
         return block
 
@@ -106,11 +96,9 @@ class Blockchain(object):
         }
         transaction['hash'] = elem_hash(transaction)
         transaction["sign"] = sign_ecdsa_msg(secret_key, transaction['hash'])
-        if Validator.validate_transaction(self.wallets, transaction, self.reward,
-                                          self.emission_address,
-                                          self.one_unit):
+        if self.validate_transaction(transaction):
             self.current_transactions.append(transaction)
-            self.current_transactions_hashs.add(transaction['hash'])
+            self.current_transactions_hashes.add(transaction['hash'])
         return transaction
 
     @property
@@ -119,7 +107,7 @@ class Blockchain(object):
 
     def proof_of_work(self, last_proof: int) -> int:
         proof = 0
-        while Validator.validate_proof(last_proof, proof, self.difficult) is False:
+        while self.validate_proof(last_proof, proof) is False:
             proof += 1
 
         return proof
@@ -140,16 +128,8 @@ class Blockchain(object):
 
             if response.status_code == 200:
                 chain = response.json()
-                if (len(chain) > max_length and Validator.validate_chain(chain, self.reward, self.emission_address,
-                                                                         self.one_unit, self.difficult,
-                                                                         self.wallets)) or (
-                        not Validator.validate_chain(self.chain, self.reward, self.emission_address,
-                                                     self.one_unit, self.difficult,
-                                                     self.wallets) and Validator.validate_chain(chain, self.reward,
-                                                                                                self.emission_address,
-                                                                                                self.one_unit,
-                                                                                                self.difficult,
-                                                                                                self.wallets)):
+                if (len(chain) > max_length and self.validate_chain(chain)) or (
+                        not self.validate_chain(self.chain) and self.validate_chain(chain)):
                     max_length = len(chain)
                     new_chain = chain
         if new_chain:
@@ -160,3 +140,86 @@ class Blockchain(object):
                     file.write('\n')
             return True
         return False
+
+    def validate_transaction(self, transaction: dict) -> bool:
+        transaction_without_sign = dict(transaction)
+        transaction_without_sign.pop('sign')
+        if transaction['sender'] == self.emission_address:
+            if transaction['amount'] > self.reward:
+                return False
+            if not validate_signature(public_key=transaction['recipient'],
+                                      signature=transaction['sign'],
+                                      message=transaction['hash']
+                                      ):
+                return False
+            if transaction['recipient'] not in self.wallets:
+                self.wallets[transaction['recipient']] = self.reward
+            else:
+                self.wallets[transaction['recipient']] += self.reward
+            return True
+        else:
+            if transaction['sender'] not in self.wallets or transaction['fee'] < self.one_unit:
+                return False
+            if self.wallets[transaction['sender']] < transaction['amount'] + transaction['fee']:
+                return False
+            if not validate_signature(public_key=transaction['sender'],
+                                      signature=transaction['sign'],
+                                      message=transaction['hash']
+                                      ):
+                return False
+            self.wallets[transaction['sender']] -= transaction['amount'] + transaction['fee']
+            if transaction['recipient'] not in self.wallets:
+                self.wallets[transaction['recipient']] = transaction['amount']
+            else:
+                self.wallets[transaction['recipient']] += transaction['amount']
+            return True
+
+    def validate_transactions(self, transactions: list[dict]) -> bool:
+        emission_transaction = 0
+        transactions_hashes = []
+        for transaction in transactions:
+            if emission_transaction > 1:
+                return False
+            if transaction['sender'] == self.emission_address:
+                emission_transaction += 1
+            if transaction['hash'] in transactions_hashes:
+                return False
+            if not self.validate_transaction(transaction):
+                return False
+            transactions_hashes.append(transaction['hash'])
+        return True
+
+    def validate_block(self, block: dict, previous_block: dict) -> bool:
+        if block['previous_hash'] != elem_hash(previous_block):
+            return False
+        if not self.validate_proof(previous_block['proof'], block['proof']):
+            return False
+        if (block['index'] - 1) != previous_block['index']:
+            return False
+        if block['reward'] != self.reward or block['difficult'] != self.difficult:
+            return False
+        sum_of_fee = 0
+        for trn in block['transactions']:
+            sum_of_fee += trn['fee']
+        if not self.validate_transactions(block['transactions']):
+            return False
+        return True
+
+    def validate_proof(self, last_proof: int, proof: int) -> bool:
+        guess = f'{last_proof}{proof}'.encode()
+        guess_hash = hashlib.sha256(guess).hexdigest()
+        if guess_hash[:self.difficult] == '0' * self.difficult:
+            return True
+        return False
+
+    def validate_chain(self, chain: list[dict]) -> bool:
+        self.wallets.clear()
+        last_block = chain[0]
+        current_index = 1
+        while current_index < len(chain):
+            block = chain[current_index]
+            if not self.validate_block(block, last_block):
+                return False
+            last_block = block
+            current_index += 1
+        return True
