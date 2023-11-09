@@ -84,7 +84,7 @@ class Blockchain(object):
     def new_transaction(
             self, sender: str,
             recipient: str,
-            amount: int,
+            amount: float,
             fee: float,
             secret_key: str) -> dict:
         transaction = {
