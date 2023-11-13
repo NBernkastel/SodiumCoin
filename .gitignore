@@ -7,7 +7,7 @@ __pycache__/
 *.so
 
 
-.indea
+.idea
 
 # Distribution / packaging
 .Python
