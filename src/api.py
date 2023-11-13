@@ -55,9 +55,17 @@ async def new_transaction(trn: Transaction):
     return transaction
 
 
-@app.get('/chain')
-async def full_chain():
-    return blockchain.chain
+@app.get('/height')
+async def get_chain_height():
+    return blockchain.last_block['index']
+
+
+@app.get('/get_blocks')
+async def get_part_of_chain(start: int, length: int):
+    res = list(blockchain.db.block_collection.find({'index': {'$gt': start, '$lt': start + length}}))
+    for r in res:
+        del r['_id']
+    return res
 
 
 @app.post("/transactions/get")
@@ -88,17 +96,7 @@ async def get_block(block: Block):
 
 @app.get('/nodes/consensus')
 async def consensus():
-    replaced = blockchain.consensus()
-
-    if replaced:
-        return {
-            'message': 'Our chain was replaced',
-            'new_chain': blockchain.chain
-        }
-    return {
-        'message': 'Our chain is authoritative',
-        'chain': blockchain.chain
-    }
+    return blockchain.consensus()
 
 
 @app.get('/chain/validate')
