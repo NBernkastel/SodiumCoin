@@ -8,7 +8,7 @@ from utils import console_clear, get_logo
 def wallet():
     response = None
     blockchain.consensus()
-    if not blockchain.validate_chain(blockchain.chain):
+    if not blockchain.validate_chain():
         raise Exception('No valid chain')
     while response not in ['1', '2', '3']:
         response = input("""What do you want to do?

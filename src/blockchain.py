@@ -1,7 +1,5 @@
 import hashlib
-import json
 from time import time
-
 import pymongo
 import requests
 from blockchain_utils import elem_hash
@@ -12,7 +10,7 @@ from mongo_db import Mongo
 
 class Blockchain:
     def __init__(self):
-        self.difficult = 4
+        self.difficult = 8
         self.reward = 50
         self.one_unit = 0.00000001
         self.emission_address = '0'
@@ -25,6 +23,7 @@ class Blockchain:
             self.nodes.add(node)
 
     def mine(self):
+        self.validate_chain()
         self.consensus()
         for node in NODES:
             response = requests.get(node + '/transactions/existing')
@@ -39,9 +38,9 @@ class Blockchain:
         last_proof = last_block['proof']
         proof = self.proof_of_work(last_proof)
         self.new_transaction(
-            sender='0',
+            sender=self.emission_address,
             recipient=PUBLIC_KEY,
-            amount=1,
+            amount=self.reward,
             fee=0,
             secret_key=SECRET_KEY
         )
@@ -117,10 +116,12 @@ class Blockchain:
         max_height = height
         nodes_heights = {}
         for node in self.nodes:
-            response = requests.get(node + '/height')
+            response = requests.get(node + '/chain/height')
             if response.status_code == 200 and response.json() > height:
                 nodes_heights[node] = response.json()
                 max_height = response.json()
+        if len(nodes_heights) == 0:
+            return False
         max_node = max(nodes_heights, key=nodes_heights.get)
         nums_of_req = 1
         additional_chain = []
@@ -203,16 +204,22 @@ class Blockchain:
         guess = f'{last_proof}{proof}'.encode()
         guess_hash = hashlib.sha256(guess).hexdigest()
         if guess_hash[:self.difficult] == '0' * self.difficult:
+            print(guess_hash)
             return True
         return False
 
     def validate_chain(self, chain: list[dict] = None) -> bool:
         if not chain:
             last_index = self.last_block['index']
-            last_block = self.last_block
+            last_block = self.db.block_collection.find_one({'index': 1})
+            del last_block['_id']
             current_index = 2
-            while current_index < last_index:
+            while current_index <= last_index:
                 block = self.db.block_collection.find_one({'index': current_index})
+                if not block:
+                    self.db.block_collection.delete_many({'index': {'$gt': 1}})
+                    return False
+                del block['_id']
                 if not self.validate_block(block, last_block):
                     self.db.block_collection.delete_many({'index': {'$gt': block['index']}})
                     return block['index']

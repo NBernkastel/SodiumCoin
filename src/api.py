@@ -1,9 +1,6 @@
-import requests
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
-
 from blockchain import Blockchain
-from config import NODES, PUBLIC_KEY, SECRET_KEY
 
 app = FastAPI()
 
@@ -33,27 +30,7 @@ class Block(BaseModel):
     reward: float
 
 
-@app.get("/block/mine")
-async def mine():
-    return blockchain.mine()
-
-
-@app.post("/transactions/new")
-async def new_transaction(trn: Transaction):
-    blockchain.consensus()
-    transaction = (blockchain.new_transaction
-                   (trn.sender,
-                    trn.recipient,
-                    trn.amount,
-                    trn.fee,
-                    SECRET_KEY)
-                   )
-    for node in NODES:
-        requests.post(node + '/transactions/get', json=transaction)
-    return transaction
-
-
-@app.get('chain/height')
+@app.get('/chain/height')
 async def get_chain_height():
     return blockchain.last_block['index']
 
@@ -89,4 +66,3 @@ async def get_block(block: Block):
         blockchain.db.block_collection.insert_one(dict(block))
         return True
     return False
-
