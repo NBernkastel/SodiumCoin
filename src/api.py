@@ -60,6 +60,8 @@ async def get_chain_height():
 
 @app.get('/block/send')
 async def get_part_of_chain(start: int, length: int):
+    if length > 10 or start >= blockchain.last_block['index']:
+        return False
     res = list(blockchain.db.block_collection.find({'index': {'$gt': start, '$lt': start + length}}))
     for r in res:
         del r['_id']

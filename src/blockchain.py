@@ -103,7 +103,6 @@ class Blockchain:
         proof = 0
         while self.validate_proof(last_proof, proof) is False:
             proof += 1
-
         return proof
 
     def check_balance(self, public_key: str) -> float:
