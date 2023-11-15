@@ -25,16 +25,16 @@ class Blockchain:
             self.nodes.add(node)
 
     def mine(self):
-        # self.consensus()
-        # for node in NODES:
-        #     response = requests.get(node + '/transactions/existing')
-        #     if response.status_code == 200:
-        #         transactions = response.json()
-        #         for transaction in transactions:
-        #             if transaction['hash'] not in self.current_transactions_hashes:
-        #                 if self.validate_transaction(transaction):
-        #                     self.current_transactions.append(transaction)
-        #                     self.current_transactions_hashes.add(transaction['hash'])
+        self.consensus()
+        for node in NODES:
+            response = requests.get(node + '/transactions/existing')
+            if response.status_code == 200:
+                transactions = response.json()
+                for transaction in transactions:
+                    if transaction['hash'] not in self.current_transactions_hashes:
+                        if self.validate_transaction(transaction):
+                            self.current_transactions.append(transaction)
+                            self.current_transactions_hashes.add(transaction['hash'])
         last_block = self.last_block
         last_proof = last_block['proof']
         proof = self.proof_of_work(last_proof)
@@ -48,10 +48,7 @@ class Blockchain:
         previous_hash = elem_hash(last_block)
         block = self.new_block(proof, previous_hash)
         for node in self.nodes:
-            try:
-                requests.post(node + '/block/get', json=block)
-            except Exception:
-                continue
+            requests.post(node + '/block/get', json=block)
         return block
 
     def new_block(self, proof: int, previous_hash=None) -> dict:
@@ -210,14 +207,26 @@ class Blockchain:
             return True
         return False
 
-    def validate_chain(self, chain: list[dict]) -> bool:
-        self.wallets.clear()
-        last_block = self.block_by_index(1)
-        current_index = 2
-        while current_index < len(chain):
-            block = self.db.block_collection.find_one({'index': current_index})
-            if not self.validate_block(block, last_block):
-                return block['index']
-            last_block = block
-            current_index += 1
-        return True
+    def validate_chain(self, chain: list[dict] = None) -> bool:
+        if not chain:
+            last_index = self.last_block['index']
+            last_block = self.last_block
+            current_index = 2
+            while current_index < last_index:
+                block = self.db.block_collection.find_one({'index': current_index})
+                if not self.validate_block(block, last_block):
+                    self.db.block_collection.delete_many({'index': {'$gt': block['index']}})
+                    return block['index']
+                last_block = block
+                current_index += 1
+            return True
+        else:
+            last_block = chain[0]
+            current_index = 1
+            while current_index < len(chain):
+                block = chain[1]
+                if not self.validate_block(block, last_block):
+                    return block['index']
+                last_block = block
+                current_index += 1
+            return True

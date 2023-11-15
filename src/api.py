@@ -1,5 +1,3 @@
-import json
-
 import requests
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -55,12 +53,12 @@ async def new_transaction(trn: Transaction):
     return transaction
 
 
-@app.get('/height')
+@app.get('chain/height')
 async def get_chain_height():
     return blockchain.last_block['index']
 
 
-@app.get('/get_blocks')
+@app.get('/block/send')
 async def get_part_of_chain(start: int, length: int):
     res = list(blockchain.db.block_collection.find({'index': {'$gt': start, '$lt': start + length}}))
     for r in res:
@@ -74,8 +72,8 @@ async def get_transaction(trn: TransactionGet):
         if trn.hash not in blockchain.current_transactions_hashes:
             blockchain.current_transactions.append(dict(trn))
             blockchain.current_transactions_hashes.add(trn.hash)
-            return 200
-    return HTTPException(422)
+            return True
+    return False
 
 
 @app.get("/transactions/existing")
@@ -86,25 +84,7 @@ async def existing_transaction():
 @app.post("/block/get")
 async def get_block(block: Block):
     if blockchain.validate_block(dict(block), blockchain.last_block):
-        blockchain.chain.append(dict(block))
-        with open('../blockchain', 'a') as file:
-            file.write('\n')
-            json.dump(dict(block), file, sort_keys=True)
-            return True
-    return HTTPException(422)
+        blockchain.db.block_collection.insert_one(dict(block))
+        return True
+    return False
 
-
-@app.get('/nodes/consensus')
-async def consensus():
-    return blockchain.consensus()
-
-
-@app.get('/chain/validate')
-async def chain_validate():
-    return blockchain.validate_chain(blockchain.chain)
-
-
-@app.get('/balance')
-async def balance():
-    blockchain.consensus()
-    return blockchain.check_balance(PUBLIC_KEY)
