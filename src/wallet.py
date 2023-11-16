@@ -7,9 +7,8 @@ from utils import console_clear, get_logo
 
 def wallet():
     response = None
+    blockchain.validate_chain()
     blockchain.consensus()
-    if not blockchain.validate_chain():
-        raise Exception('No valid chain')
     while response not in ['1', '2', '3']:
         response = input("""What do you want to do?
             1. Generate new wallet
@@ -36,7 +35,6 @@ def wallet():
             print(F"From: {addr_from}\nPrivate Key: {private_key}\nTo: {addr_to}\nAmount: {amount}\n")
             response = input("y/n\n")
             if response.lower() == 'y':
-                blockchain.consensus()
                 transaction = (blockchain.new_transaction
                                (addr_from,
                                 addr_to,

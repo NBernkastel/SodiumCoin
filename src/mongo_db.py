@@ -24,7 +24,3 @@ class Mongo:
             self.db = client[self.BLOCKCHAIN]
             self.block_collection = self.db.get_collection('blocks')
             self.state_collection = self.db.get_collection('states')
-
-
-if __name__ == '__main__':
-    mongo = Mongo()
